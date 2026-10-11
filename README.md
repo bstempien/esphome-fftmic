@@ -10,7 +10,7 @@ The detector searches the 60–4000 Hz range, uses parabolic peak interpolation,
 
 ## Wiring
 
-Connect the INMP441 to 3.3 V and GND. Connect `SCK` to `bclk_pin`, `WS` to `ws_pin`, and `SD` to `din_pin`. Tie `L/R` to GND to select the left I²S channel. Use GPIOs available on your particular ESP32-S3 board; configure those exact pins in YAML.
+Connect the INMP441 to 3.3 V and GND. Connect `SCK` to `bclk_pin`, `WS` to `ws_pin`, and `SD` to `din_pin`. Tie `L/R` to GND to select the left I²S channel (the component explicitly captures only that slot). Use GPIOs available on your particular ESP32-S3 board; configure those exact pins in YAML.
 
 ## ESPHome configuration
 

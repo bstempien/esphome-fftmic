@@ -36,6 +36,9 @@ void Inmp441AudioSource::setup() {
                   },
           },
   };
+  // The ESP32-S3 default slot macro selects both slots even in mono mode.
+  // INMP441 L/R low selects the left slot; explicitly exclude the unused slot.
+  standard_config.slot_cfg.slot_mask = I2S_STD_SLOT_LEFT;
 
   err = i2s_channel_init_std_mode(this->rx_handle_, &standard_config);
   if (err == ESP_OK)
