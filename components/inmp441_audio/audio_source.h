@@ -28,12 +28,29 @@ class Inmp441AudioSource : public Component {
   uint32_t sample_rate() const { return this->sample_rate_; }
 
  protected:
+  struct BiquadFilter {
+    float b0{1.0f};
+    float b1{0.0f};
+    float b2{0.0f};
+    float a1{0.0f};
+    float a2{0.0f};
+    float x1{0.0f};
+    float x2{0.0f};
+    float y1{0.0f};
+    float y2{0.0f};
+
+    void configure(float cutoff_hz, float sample_rate, bool high_pass);
+    float process(float sample);
+  };
+
   i2s_chan_handle_t rx_handle_{nullptr};
   uint8_t bclk_pin_{0};
   uint8_t ws_pin_{0};
   uint8_t din_pin_{0};
   uint32_t sample_rate_{16000};
   uint32_t sample_index_{0};
+  BiquadFilter high_pass_filter_;
+  BiquadFilter low_pass_filter_;
   std::array<AudioListener *, 4> listeners_{};
   std::array<int32_t, 256> raw_samples_{};
   std::array<int16_t, 256> pcm_samples_{};
