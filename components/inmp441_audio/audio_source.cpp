@@ -69,8 +69,8 @@ namespace esphome
       static const float kScale = kGainLin / 256.0f;              // gain + 24-bit -> 16-bit (divide by 2^8)
 
       // Class members (zero-initialised)
-      // float dc_x1_{0.0f};
-      // float dc_y1_{0.0f};
+      float dc_x1_{0.0f};
+      float dc_y1_{0.0f};
 
       size_t bytes_read = 0;
       esp_err_t err = i2s_channel_read(this->rx_handle_, this->raw_samples_.data(),
