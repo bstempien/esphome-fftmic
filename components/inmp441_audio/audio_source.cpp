@@ -1,50 +1,12 @@
 #include "audio_source.h"
 #include "esphome/core/log.h"
-#include <algorithm>
-#include <cmath>
-#include <limits>
 
 namespace esphome {
 namespace inmp441_audio {
 
 static const char *const TAG = "inmp441_audio";
-static constexpr float PI = 3.14159265358979323846f;
-static constexpr float FILTER_Q = 0.70710678118f;
-
-void Inmp441AudioSource::BiquadFilter::configure(float cutoff_hz, float sample_rate,
-                                                  bool high_pass) {
-  const float omega = 2.0f * PI * cutoff_hz / sample_rate;
-  const float cosine = cosf(omega);
-  const float alpha = sinf(omega) / (2.0f * FILTER_Q);
-  const float a0 = 1.0f + alpha;
-
-  if (high_pass) {
-    this->b0 = (1.0f + cosine) / (2.0f * a0);
-    this->b1 = -(1.0f + cosine) / a0;
-    this->b2 = this->b0;
-  } else {
-    this->b0 = (1.0f - cosine) / (2.0f * a0);
-    this->b1 = (1.0f - cosine) / a0;
-    this->b2 = this->b0;
-  }
-  this->a1 = -2.0f * cosine / a0;
-  this->a2 = (1.0f - alpha) / a0;
-}
-
-float Inmp441AudioSource::BiquadFilter::process(float sample) {
-  const float output = this->b0 * sample + this->b1 * this->x1 + this->b2 * this->x2 -
-                       this->a1 * this->y1 - this->a2 * this->y2;
-  this->x2 = this->x1;
-  this->x1 = sample;
-  this->y2 = this->y1;
-  this->y1 = output;
-  return output;
-}
 
 void Inmp441AudioSource::setup() {
-  this->high_pass_filter_.configure(800.0f, static_cast<float>(this->sample_rate_), true);
-  this->low_pass_filter_.configure(2500.0f, static_cast<float>(this->sample_rate_), false);
-
   i2s_chan_config_t channel_config = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
   channel_config.dma_desc_num = 4;
   channel_config.dma_frame_num = this->raw_samples_.size();
@@ -110,11 +72,7 @@ void Inmp441AudioSource::loop() {
   const size_t count = bytes_read / sizeof(int32_t);
   for (size_t i = 0; i < count; i++) {
     // INMP441 audio is 24-bit, MSB-aligned in the 32-bit I2S slot.
-    float sample = static_cast<float>(this->raw_samples_[i] >> 16);
-    sample = this->low_pass_filter_.process(this->high_pass_filter_.process(sample)) * 2.0f;
-    sample = std::clamp(sample, static_cast<float>(std::numeric_limits<int16_t>::min()),
-                        static_cast<float>(std::numeric_limits<int16_t>::max()));
-    this->pcm_samples_[i] = static_cast<int16_t>(sample);
+    this->pcm_samples_[i] = static_cast<int16_t>(this->raw_samples_[i] >> 16);
   }
   const uint32_t first_sample = this->sample_index_;
   this->sample_index_ += count;
