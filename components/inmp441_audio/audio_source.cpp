@@ -72,7 +72,7 @@ void Inmp441AudioSource::loop() {
   const size_t count = bytes_read / sizeof(int32_t);
   for (size_t i = 0; i < count; i++) {
     // INMP441 audio is 24-bit, MSB-aligned in the 32-bit I2S slot.
-    uint16_t shortened = (this->raw_samples_[i] >> 14);
+    uint16_t shortened = (this->raw_samples_[i] >> 13);
     this->pcm_samples_[i] = static_cast<int16_t>(shortened);
   }
   const uint32_t first_sample = this->sample_index_;
