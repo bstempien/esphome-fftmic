@@ -64,13 +64,19 @@ namespace esphome
 
       // Constants (file scope or class static)
       static constexpr float kDcR = 0.995f;                       // DC blocker pole (~12 Hz @ 16 kHz)
-      static constexpr float kGainDb = 24.0f;                     // +24 dB
+      static constexpr float kHighPassHz = 1800.0f;
+      static constexpr float kPi = 3.14159265358979323846f;
+      static constexpr float kGainDb = 30.0f;                     // +30 dB
       static const float kGainLin = powf(10.0f, kGainDb / 20.0f); // ~15.85x
       static const float kScale = kGainLin / 256.0f;              // gain + 24-bit -> 16-bit (divide by 2^8)
+      const float high_pass_tan =
+          tanf(kPi * kHighPassHz / static_cast<float>(this->sample_rate_));
+      const float high_pass_gain = 1.0f / (1.0f + high_pass_tan);
+      const float high_pass_feedback = (1.0f - high_pass_tan) / (1.0f + high_pass_tan);
 
       // Class members (zero-initialised)
-      float dc_x1_{0.0f};
-      float dc_y1_{0.0f};
+      // float dc_x1_{0.0f};
+      // float dc_y1_{0.0f};
 
       size_t bytes_read = 0;
       esp_err_t err = i2s_channel_read(this->rx_handle_, this->raw_samples_.data(),
@@ -93,9 +99,14 @@ namespace esphome
         // Arithmetic shift gives a signed 24-bit value.
         const float x = static_cast<float>(this->raw_samples_[i] >> 8);
 
+        const float high_passed =
+            high_pass_gain * (x - this->high_pass_x1_) + high_pass_feedback * this->high_pass_y1_;
+        this->high_pass_x1_ = x;
+        this->high_pass_y1_ = high_passed;
+
         // DC blocker: y[n] = x[n] - x[n-1] + R * y[n-1]
-        const float y = x - this->dc_x1_ + kDcR * this->dc_y1_;
-        this->dc_x1_ = x;
+        const float y = high_passed - this->dc_x1_ + kDcR * this->dc_y1_;
+        this->dc_x1_ = high_passed;
         this->dc_y1_ = y;
 
         // Apply gain and scale 24-bit -> 16-bit range, then clamp.
