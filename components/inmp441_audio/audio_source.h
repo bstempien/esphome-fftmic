@@ -37,6 +37,8 @@ class Inmp441AudioSource : public Component {
   std::array<AudioListener *, 4> listeners_{};
   std::array<int32_t, 256> raw_samples_{};
   std::array<int16_t, 256> pcm_samples_{};
+  float dc_x1_{0.0f};
+  float dc_y1_{0.0f};
 };
 
 }  // namespace inmp441_audio
