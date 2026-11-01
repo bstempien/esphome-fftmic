@@ -34,6 +34,7 @@ class Inmp441AudioSource : public Component {
   uint8_t din_pin_{0};
   uint32_t sample_rate_{16000};
   uint32_t sample_index_{0};
+  uint32_t ovf_count_{0};
   std::array<AudioListener *, 4> listeners_{};
   std::array<int32_t, 256> raw_samples_{};
   std::array<int16_t, 256> pcm_samples_{};
