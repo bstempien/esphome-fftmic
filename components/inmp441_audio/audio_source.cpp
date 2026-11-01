@@ -82,14 +82,15 @@ namespace esphome
       esp_err_t err = i2s_channel_read(this->rx_handle_, this->raw_samples_.data(),
                                        this->raw_samples_.size() * sizeof(int32_t), &bytes_read,
                                        20);
-      if (err == ESP_ERR_TIMEOUT)
-        return;
-      if (err != ESP_OK)
+      // if (err == ESP_ERR_TIMEOUT)
+      //   return;
+      if (err != ESP_OK && err != ESP_ERR_TIMEOUT)
       {
         ESP_LOGE(TAG, "I2S read failed: %s", esp_err_to_name(err));
         this->status_set_warning();
         return;
       }
+      if (bytes_read == 0) return;
       this->status_clear_warning();
 
       const size_t count = bytes_read / sizeof(int32_t);
