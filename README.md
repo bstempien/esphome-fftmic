@@ -4,7 +4,7 @@ ESPHome external components for an ESP32-S3 and INMP441 I²S microphone:
 
 - `audio_udp_stream` sends raw 16-bit mono PCM to a configurable UDP receiver for recording.
 - `note_sequence_detector` performs a 1024-point Hann-windowed FFT every 512 samples (32 ms at 16 kHz) and publishes a binary sensor when the configured note sequence is heard.
-- `inmp441_audio` is the shared I²S capture source used by both features. It initializes the microphone once and fans the samples out to its consumers.
+- `inmp441_audio` is the shared I²S capture source used by both features. It initializes the microphone once, captures in a blocking FreeRTOS task, and stores PCM in a 2048-sample shared ring buffer with an independent read position for each consumer. If a consumer falls more than 128 ms behind at 16 kHz, old samples are dropped and an overrun warning is logged.
 
 The detector searches the 60–4000 Hz range, uses parabolic peak interpolation, and requires each configured note to remain within the selected frequency tolerance for its minimum duration. Between notes, it waits for the previous pitch to release. Detection remains on for `trigger_hold` and then automatically resets.
 

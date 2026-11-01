@@ -15,6 +15,11 @@ struct __attribute__((packed)) PacketHeader {
 };
 
 void AudioUDPStream::setup() {
+  if (this->parent_ == nullptr || this->parent_->is_failed()) {
+    ESP_LOGE(TAG, "The audio source is unavailable");
+    this->mark_failed();
+    return;
+  }
   if (this->parent_->sample_rate() != 16000) {
     ESP_LOGE(TAG, "UDP format is fixed at 16000 Hz; configure the audio source accordingly");
     this->mark_failed();
@@ -24,8 +29,25 @@ void AudioUDPStream::setup() {
     this->mark_failed();
     return;
   }
-  this->parent_->add_listener(this);
+  if (!this->parent_->add_listener(this)) {
+    close(this->socket_);
+    this->socket_ = -1;
+    this->mark_failed();
+    return;
+  }
   ESP_LOGI(TAG, "Streaming PCM to %s:%u", this->destination_ip_.c_str(), this->port_);
+}
+
+void AudioUDPStream::loop() {
+  if (this->is_failed())
+    return;
+
+  uint32_t first_sample = 0;
+  size_t count;
+  while ((count = this->parent_->read_audio(this, this->audio_samples_.data(),
+                                             this->audio_samples_.size(), &first_sample)) > 0) {
+    this->on_audio(this->audio_samples_.data(), count, first_sample);
+  }
 }
 
 bool AudioUDPStream::open_socket_() {

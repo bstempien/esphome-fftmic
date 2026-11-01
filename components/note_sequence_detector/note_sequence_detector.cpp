@@ -11,12 +11,20 @@ static const char *const TAG = "note_sequence";
 static constexpr float PI = 3.14159265358979323846f;
 
 void NoteSequenceDetector::setup() {
-  if (this->parent_ == nullptr || this->parent_->sample_rate() != 16000 || this->note_count_ == 0) {
+  if (this->parent_ == nullptr || this->parent_->is_failed()) {
+    ESP_LOGE(TAG, "The audio source is unavailable");
+    this->mark_failed();
+    return;
+  }
+  if (this->parent_->sample_rate() != 16000 || this->note_count_ == 0) {
     ESP_LOGE(TAG, "A 16000 Hz audio source and at least one target note are required");
     this->mark_failed();
     return;
   }
-  this->parent_->add_listener(this);
+  if (!this->parent_->add_listener(this)) {
+    this->mark_failed();
+    return;
+  }
   this->publish_state(false);
 }
 
@@ -27,6 +35,16 @@ void NoteSequenceDetector::loop() {
     this->matching_frames_ = 0;
     this->waiting_for_release_ = false;
     this->publish_state(false);
+  }
+
+  if (this->is_failed() || this->parent_ == nullptr)
+    return;
+
+  uint32_t first_sample = 0;
+  size_t count;
+  while ((count = this->parent_->read_audio(this, this->audio_samples_.data(),
+                                             this->audio_samples_.size(), &first_sample)) > 0) {
+    this->on_audio(this->audio_samples_.data(), count, first_sample);
   }
 }
 

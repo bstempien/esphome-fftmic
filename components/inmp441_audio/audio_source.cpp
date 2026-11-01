@@ -1,5 +1,6 @@
 #include "audio_source.h"
 #include "esphome/core/log.h"
+#include <algorithm>
 
 namespace esphome
 {
@@ -64,12 +65,31 @@ namespace esphome
       }
 
       ESP_LOGI(TAG, "INMP441 capture started at %u Hz", this->sample_rate_);
+      if (xTaskCreate(&Inmp441AudioSource::capture_task_, "inmp441_capture", 4096, this, 5,
+                      &this->capture_task_handle_) != pdPASS)
+      {
+        ESP_LOGE(TAG, "Failed to create audio capture task");
+        this->mark_failed();
+        err = i2s_channel_disable(this->rx_handle_);
+        if (err != ESP_OK)
+          ESP_LOGE(TAG, "Failed to disable I2S receive channel: %s", esp_err_to_name(err));
+        err = i2s_del_channel(this->rx_handle_);
+        if (err != ESP_OK)
+          ESP_LOGE(TAG, "Failed to delete I2S receive channel: %s", esp_err_to_name(err));
+        else
+          this->rx_handle_ = nullptr;
+      }
     }
 
-    void Inmp441AudioSource::loop()
+    void Inmp441AudioSource::capture_task_(void *arg)
     {
-      if (this->is_failed() || this->rx_handle_ == nullptr)
-        return;
+      auto *source = static_cast<Inmp441AudioSource *>(arg);
+      while (true)
+        source->capture_loop_();
+    }
+
+    void Inmp441AudioSource::capture_loop_()
+    {
 
       // Constants (file scope or class static)
       static constexpr float kDcR = 0.995f;                       // DC blocker pole (~12 Hz @ 16 kHz)
@@ -83,27 +103,26 @@ namespace esphome
       const float high_pass_gain = 1.0f / (1.0f + high_pass_tan);
       const float high_pass_feedback = (1.0f - high_pass_tan) / (1.0f + high_pass_tan);
 
-      // Class members (zero-initialised)
-      // float dc_x1_{0.0f};
-      // float dc_y1_{0.0f};
-
       size_t bytes_read = 0;
       esp_err_t err = i2s_channel_read(this->rx_handle_, this->raw_samples_.data(),
                                        this->raw_samples_.size() * sizeof(int32_t), &bytes_read,
-                                       20);
-      // if (err == ESP_ERR_TIMEOUT)
-      //   return;
+                                       1000);
       if (err != ESP_OK && err != ESP_ERR_TIMEOUT)
       {
         ESP_LOGE(TAG, "I2S read failed: %s", esp_err_to_name(err));
         this->status_set_warning();
+        vTaskDelay(pdMS_TO_TICKS(20));
         return;
       }
-      // Claude change 3 for hum.
-      ESP_LOGI(TAG, "I2S read %zu bytes, overflow count %u", bytes_read, this->ovf_count_);
 
       if (bytes_read == 0) return;
       this->status_clear_warning();
+      const uint32_t overflow_count = *static_cast<volatile uint32_t *>(&this->ovf_count_);
+      if (overflow_count != this->reported_ovf_count_)
+      {
+        this->reported_ovf_count_ = overflow_count;
+        ESP_LOGW(TAG, "I2S receive queue overflow count %u", overflow_count);
+      }
 
       const size_t count = bytes_read / sizeof(int32_t);
       for (size_t i = 0; i < count; i++)
@@ -131,26 +150,90 @@ namespace esphome
 
         this->pcm_samples_[i] = static_cast<int16_t>(lrintf(s));
       }
-      const uint32_t first_sample = this->sample_index_;
-      this->sample_index_ += count;
-      for (auto *listener : this->listeners_)
-      {
-        if (listener != nullptr)
-          listener->on_audio(this->pcm_samples_.data(), count, first_sample);
-      }
+      this->publish_audio_(this->pcm_samples_.data(), count);
     }
 
-    void Inmp441AudioSource::add_listener(AudioListener *listener)
+    void Inmp441AudioSource::publish_audio_(const int16_t *samples, size_t count)
     {
-      for (auto &registered : this->listeners_)
+      portENTER_CRITICAL(&this->ring_mux_);
+      for (size_t i = 0; i < count; i++)
       {
-        if (registered == nullptr)
+        this->audio_ring_[this->write_sequence_ % RING_BUFFER_SIZE] = samples[i];
+        this->write_sequence_++;
+      }
+      portEXIT_CRITICAL(&this->ring_mux_);
+    }
+
+    bool Inmp441AudioSource::add_listener(AudioListener *listener)
+    {
+      if (listener == nullptr)
+        return false;
+
+      bool added = false;
+      portENTER_CRITICAL(&this->ring_mux_);
+      for (auto &state : this->listeners_)
+      {
+        if (state.listener == listener)
         {
-          registered = listener;
-          return;
+          added = true;
+          break;
+        }
+        if (state.listener == nullptr)
+        {
+          state.listener = listener;
+          state.read_sequence = this->write_sequence_;
+          state.overrun_count = 0;
+          added = true;
+          break;
         }
       }
-      ESP_LOGE(TAG, "Too many audio consumers; maximum is %u", this->listeners_.size());
+      portEXIT_CRITICAL(&this->ring_mux_);
+      if (!added)
+        ESP_LOGE(TAG, "Too many audio consumers; maximum is %u", this->listeners_.size());
+      return added;
+    }
+
+    size_t Inmp441AudioSource::read_audio(AudioListener *listener, int16_t *samples, size_t max_count,
+                                          uint32_t *first_sample)
+    {
+      if (listener == nullptr || samples == nullptr || first_sample == nullptr || max_count == 0)
+        return 0;
+
+      size_t count = 0;
+      uint64_t dropped_samples = 0;
+      uint32_t overrun_count = 0;
+      bool found = false;
+      portENTER_CRITICAL(&this->ring_mux_);
+      for (auto &state : this->listeners_)
+      {
+        if (state.listener != listener)
+          continue;
+
+        found = true;
+        const uint64_t oldest_sequence =
+            this->write_sequence_ > RING_BUFFER_SIZE ? this->write_sequence_ - RING_BUFFER_SIZE : 0;
+        if (state.read_sequence < oldest_sequence)
+        {
+          dropped_samples = oldest_sequence - state.read_sequence;
+          state.read_sequence = oldest_sequence;
+          overrun_count = ++state.overrun_count;
+        }
+
+        count = std::min(max_count, static_cast<size_t>(this->write_sequence_ - state.read_sequence));
+        *first_sample = static_cast<uint32_t>(state.read_sequence);
+        for (size_t i = 0; i < count; i++)
+          samples[i] = this->audio_ring_[(state.read_sequence + i) % RING_BUFFER_SIZE];
+        state.read_sequence += count;
+        break;
+      }
+      portEXIT_CRITICAL(&this->ring_mux_);
+
+      if (!found)
+        ESP_LOGE(TAG, "Audio listener attempted to read without registration");
+      else if (dropped_samples > 0 && ((overrun_count & 0x3F) == 1))
+        ESP_LOGW(TAG, "Audio ring buffer overrun; listener dropped %llu samples (%u overruns)",
+                 static_cast<unsigned long long>(dropped_samples), overrun_count);
+      return count;
     }
 
   } // namespace inmp441_audio

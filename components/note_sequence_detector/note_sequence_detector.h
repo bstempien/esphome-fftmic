@@ -44,6 +44,7 @@ class NoteSequenceDetector : public binary_sensor::BinarySensor,
   inmp441_audio::Inmp441AudioSource *parent_{nullptr};
   std::array<NoteTarget, 32> notes_{};
   std::array<int16_t, FFT_SIZE> samples_{};
+  std::array<int16_t, 256> audio_samples_{};
   std::array<float, FFT_SIZE> real_{};
   std::array<float, FFT_SIZE> imag_{};
   uint8_t note_count_{0};

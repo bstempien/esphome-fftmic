@@ -17,6 +17,7 @@ class AudioUDPStream : public Component, public inmp441_audio::AudioListener {
   void set_port(uint16_t port) { this->port_ = port; }
   void set_packet_samples(uint16_t count) { this->packet_samples_ = count; }
   void setup() override;
+  void loop() override;
   void on_audio(const int16_t *samples, size_t count, uint32_t first_sample) override;
   float get_setup_priority() const override { return setup_priority::AFTER_WIFI; }
 
@@ -29,6 +30,7 @@ class AudioUDPStream : public Component, public inmp441_audio::AudioListener {
   int socket_{-1};
   sockaddr_in destination_{};
   std::array<int16_t, 1200> packet_samples_buffer_{};
+  std::array<int16_t, 256> audio_samples_{};
   size_t buffered_samples_{0};
   uint32_t packet_first_sample_{0};
   uint32_t dropped_packets_{0};
