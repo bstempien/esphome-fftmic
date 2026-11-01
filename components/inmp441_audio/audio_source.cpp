@@ -8,6 +8,11 @@ namespace esphome
 
     static const char *const TAG = "inmp441_audio";
 
+    // Claude change 2 for hum.
+    static bool IRAM_ATTR on_ovf(i2s_chan_handle_t, i2s_event_data_t *, void *u) {
+      (*static_cast<volatile uint32_t *>(u))++; return false;
+    }
+
     void Inmp441AudioSource::setup()
     {
       i2s_chan_config_t channel_config = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
@@ -43,6 +48,10 @@ namespace esphome
       // The ESP32-S3 default slot macro selects both slots even in mono mode.
       // INMP441 L/R low selects the left slot; explicitly exclude the unused slot.
       standard_config.slot_cfg.slot_mask = I2S_STD_SLOT_LEFT;
+
+      // Claude code to show if we drop audio.
+      i2s_event_callbacks_t cbs = {}; cbs.on_recv_q_ovf = on_ovf;
+      i2s_channel_register_event_callback(this->rx_handle_, &cbs, &this->ovf_count_);
 
       err = i2s_channel_init_std_mode(this->rx_handle_, &standard_config);
       if (err == ESP_OK)
@@ -90,6 +99,9 @@ namespace esphome
         this->status_set_warning();
         return;
       }
+      // Claude change 3 for hum.
+      ESP_LOGI(TAG, "I2S read %zu bytes, overflow count %u", bytes_read, this->ovf_count_);
+
       if (bytes_read == 0) return;
       this->status_clear_warning();
 
