@@ -117,12 +117,12 @@ namespace esphome
 
       if (bytes_read == 0) return;
       this->status_clear_warning();
-      const uint32_t overflow_count = *static_cast<volatile uint32_t *>(&this->ovf_count_);
-      if (overflow_count != this->reported_ovf_count_)
-      {
-        this->reported_ovf_count_ = overflow_count;
-        ESP_LOGW(TAG, "I2S receive queue overflow count %u", overflow_count);
-      }
+      // const uint32_t overflow_count = *static_cast<volatile uint32_t *>(&this->ovf_count_);
+      // if (overflow_count != this->reported_ovf_count_)
+      // {
+      //   this->reported_ovf_count_ = overflow_count;
+      //   ESP_LOGW(TAG, "I2S receive queue overflow count %u", overflow_count);
+      // }
 
       const size_t count = bytes_read / sizeof(int32_t);
       for (size_t i = 0; i < count; i++)
@@ -131,24 +131,29 @@ namespace esphome
         // Arithmetic shift gives a signed 24-bit value.
         const float x = static_cast<float>(this->raw_samples_[i] >> 8);
 
-        const float high_passed =
-            high_pass_gain * (x - this->high_pass_x1_) + high_pass_feedback * this->high_pass_y1_;
-        this->high_pass_x1_ = x;
-        this->high_pass_y1_ = high_passed;
+        // Taking out the high pass filter and gain until we see how the 
+        // audio sounds after the hardware adds. 
+        
+        // const float high_passed =
+        //     high_pass_gain * (x - this->high_pass_x1_) + high_pass_feedback * this->high_pass_y1_;
+        // this->high_pass_x1_ = x;
+        // this->high_pass_y1_ = high_passed;
 
         // DC blocker: y[n] = x[n] - x[n-1] + R * y[n-1]
-        const float y = high_passed - this->dc_x1_ + kDcR * this->dc_y1_;
-        this->dc_x1_ = high_passed;
-        this->dc_y1_ = y;
+        // const float y = high_passed - this->dc_x1_ + kDcR * this->dc_y1_;
+        // this->dc_x1_ = high_passed;
+        // this->dc_y1_ = y;
 
         // Apply gain and scale 24-bit -> 16-bit range, then clamp.
-        float s = y * kScale;
-        if (s > 32767.0f)
-          s = 32767.0f;
-        else if (s < -32768.0f)
-          s = -32768.0f;
+        // If we uncomment the DC blocker above, change high_passed to y in the below float s assignment.
+        // float s = high_passed * kScale;
+        // if (s > 32767.0f)
+        //   s = 32767.0f;
+        // else if (s < -32768.0f)
+        //   s = -32768.0f;
 
-        this->pcm_samples_[i] = static_cast<int16_t>(lrintf(s));
+        //this->pcm_samples_[i] = static_cast<int16_t>(lrintf(s));
+        this->pcm_samples_[i] = static_cast<int16_t>(lrintf(x));
       }
       this->publish_audio_(this->pcm_samples_.data(), count);
     }
