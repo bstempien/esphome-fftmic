@@ -10,9 +10,9 @@ namespace esphome
     static const char *const TAG = "inmp441_audio";
 
     // Claude change 2 for hum.
-    static bool IRAM_ATTR on_ovf(i2s_chan_handle_t, i2s_event_data_t *, void *u) {
-      (*static_cast<volatile uint32_t *>(u))++; return false;
-    }
+    // static bool IRAM_ATTR on_ovf(i2s_chan_handle_t, i2s_event_data_t *, void *u) {
+    //   (*static_cast<volatile uint32_t *>(u))++; return false;
+    // }
 
     void Inmp441AudioSource::setup()
     {
@@ -51,8 +51,8 @@ namespace esphome
       standard_config.slot_cfg.slot_mask = I2S_STD_SLOT_LEFT;
 
       // Claude code to show if we drop audio.
-      i2s_event_callbacks_t cbs = {}; cbs.on_recv_q_ovf = on_ovf;
-      i2s_channel_register_event_callback(this->rx_handle_, &cbs, &this->ovf_count_);
+      // i2s_event_callbacks_t cbs = {}; cbs.on_recv_q_ovf = on_ovf;
+      // i2s_channel_register_event_callback(this->rx_handle_, &cbs, &this->ovf_count_);
 
       err = i2s_channel_init_std_mode(this->rx_handle_, &standard_config);
       if (err == ESP_OK)
