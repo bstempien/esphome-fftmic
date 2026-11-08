@@ -93,7 +93,7 @@ namespace esphome
 
       // Constants (file scope or class static)
       static constexpr float kDcR = 0.995f;                       // DC blocker pole (~12 Hz @ 16 kHz)
-      static constexpr float kHighPassHz = 1800.0f;
+      static constexpr float kHighPassHz = 1600.0f;
       static constexpr float kPi = 3.14159265358979323846f;
       static constexpr float kGainDb = 30.0f;                     // +30 dB
       static const float kGainLin = powf(10.0f, kGainDb / 20.0f); // ~15.85x
@@ -134,10 +134,10 @@ namespace esphome
         // Taking out the high pass filter and gain until we see how the 
         // audio sounds after the hardware adds. 
         
-        // const float high_passed =
-        //     high_pass_gain * (x - this->high_pass_x1_) + high_pass_feedback * this->high_pass_y1_;
-        // this->high_pass_x1_ = x;
-        // this->high_pass_y1_ = high_passed;
+        const float high_passed =
+            high_pass_gain * (x - this->high_pass_x1_) + high_pass_feedback * this->high_pass_y1_;
+        this->high_pass_x1_ = x;
+        this->high_pass_y1_ = high_passed;
 
         // DC blocker: y[n] = x[n] - x[n-1] + R * y[n-1]
         // const float y = high_passed - this->dc_x1_ + kDcR * this->dc_y1_;
@@ -153,7 +153,8 @@ namespace esphome
         //   s = -32768.0f;
 
         //this->pcm_samples_[i] = static_cast<int16_t>(lrintf(s));
-        this->pcm_samples_[i] = static_cast<int16_t>(lrintf(x));
+        this->pcm_samples_[i] = static_cast<int16_t>(lrintf(high_passed));
+        //this->pcm_samples_[i] = static_cast<int16_t>(lrintf(x));
       }
       this->publish_audio_(this->pcm_samples_.data(), count);
     }
